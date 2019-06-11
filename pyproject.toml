@@ -13,6 +13,7 @@ python = "^3.7"
 "paka.cmark" = "^2.1"
 selectolax = "^0.1.13"
 pygments = "^2.4"
+trio = "^0.11.0"
 
 [tool.poetry.dev-dependencies]
 ptpython = "^2.0"

@@ -14,6 +14,19 @@ from paka import cmark
 Page = namedtuple("Page", ["html", "conf"])
 
 
+def rmdir(path):
+    directory = Path(path)
+    try:
+        for item in directory.iterdir():
+            if item.is_dir():
+                rmdir(item)
+            else:
+                item.unlink()
+        directory.rmdir()
+    except FileNotFoundError:
+        pass
+
+
 @functools.lru_cache()
 def get_config(filename):
     p = Path(filename)
@@ -52,14 +65,14 @@ def content_files(directory):
     return files
 
 
-def generate(files, siteconf={}):
+def generate(files, **kwargs):
     for inputfile in files:
         with inputfile.open() as f:
             content = f.read()
 
         frontmatter, body = content.split("}\n\n", 1)
         pageconf = json.loads(frontmatter + "}")
-        conf = {**siteconf, **pageconf}
+        conf = {**kwargs, **pageconf}
         output = body.format(**conf)
         html = cmark.to_html(output)
         page = Page(html, conf)
@@ -67,9 +80,9 @@ def generate(files, siteconf={}):
 
 
 def write(outdir, generated):
-    shutil.rmtree(outdir)
+    rmdir(outdir)
     for page in generated:
-        path = pathlib.Path(outdir, *page.conf["categories"], page.conf["slug"])
+        path = Path(outdir, *page.conf["categories"], page.conf["slug"])
         path.mkdir(parents=True, exist_ok=True)
         with (path / "index.html").open("w") as f:
             f.write(page.html)
@@ -77,7 +90,20 @@ def write(outdir, generated):
 
 def run():
     parser = argparse.ArgumentParser(description="A simple static site generator")
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"{__name__} {__version__}"
+    )
     parser.add_argument("src", help="Source directory containing markdown files")
     parser.add_argument("out", help="Output directory for html files and structure")
+    parser.add_argument(
+        "-c",
+        "--config",
+        help="Configuration file, in JSON (default: config.json from the source directory)",
+    )
     args = parser.parse_args()
-    write(args.out, generate(content_files(args.src)))
+    if args.config:
+        cfile = Path(args.config)
+    else:
+        cfile = Path(args.out, "config.json")
+    conf = get_config(cfile)
+    write(args.out, generate(content_files(args.src), **conf))
