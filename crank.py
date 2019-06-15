@@ -7,7 +7,6 @@ from collections import namedtuple
 import functools
 import json
 from pathlib import Path
-import shutil
 
 from paka import cmark
 
@@ -65,18 +64,28 @@ def content_files(directory):
     return files
 
 
+def generate_one(inputfile, **kwargs):
+    with inputfile.open() as f:
+        content = f.read()
+
+    frontmatter, body = content.split("\n}\n\n", 1)
+    pageconf = json.loads(frontmatter + "}")
+    conf = {**kwargs, **pageconf}
+    output = body.format(**conf)
+    if inputfile.suffix == ".md":
+        html = cmark.to_html(output)
+    else:
+        html = output.strip()
+    if not conf.get("no_header_footer"):
+        headerfile = conf.get("header")
+        footerfile = conf.get("footer")
+    page = Page(html, conf)
+    return page
+
+
 def generate(files, **kwargs):
     for inputfile in files:
-        with inputfile.open() as f:
-            content = f.read()
-
-        frontmatter, body = content.split("}\n\n", 1)
-        pageconf = json.loads(frontmatter + "}")
-        conf = {**kwargs, **pageconf}
-        output = body.format(**conf)
-        html = cmark.to_html(output)
-        page = Page(html, conf)
-        yield page
+        yield generate_one(inputfile, **kwargs)
 
 
 def write(outdir, generated):
