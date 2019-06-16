@@ -10,7 +10,7 @@ from pathlib import Path
 
 from paka import cmark
 
-Page = namedtuple("Page", ["html", "conf"])
+Page = namedtuple("Page", ["content", "conf"])
 
 
 def rmdir(path):
@@ -58,34 +58,54 @@ def redirect_content(self, url, title="This page"):
     return content
 
 
-def content_files(directory):
+def content_filenames(directory):
     p = Path(directory)
-    files = (f for f in p.glob("**/*") if f.suffix in (".html", ".md"))
+    files = p.glob("**/*")
     return files
 
 
-def generate_one(inputfile, **kwargs):
-    with inputfile.open() as f:
-        content = f.read()
-
-    frontmatter, body = content.split("\n}\n\n", 1)
-    pageconf = json.loads(frontmatter + "}")
-    conf = {**kwargs, **pageconf}
-    output = body.format(**conf)
-    if inputfile.suffix == ".md":
-        html = cmark.to_html(output)
+def content_from_file(filename):
+    path = Path(filename)
+    if path.is_file():
+        with path.open() as f:
+            content = f.read()
     else:
-        html = output.strip()
-    if not conf.get("no_header_footer"):
-        headerfile = conf.get("header")
-        footerfile = conf.get("footer")
-    page = Page(html, conf)
-    return page
+        content = ""
+    return content
 
 
-def generate(files, **kwargs):
+def parse_md(page):
+    html = cmark.to_html(page.content)
+    output = Page(html, page.conf)
+    return output
+
+
+def parse(page):
+    parts = page.content.split("\n}\n\n", 1)
+    body = parts[-1]
+    try:
+        frontmatter = parts[-2]
+        pageconf = json.loads(frontmatter + "}")
+    except IndexError:
+        pageconf = {}
+    conf = {**page.conf, **pageconf}
+    content = body.format(**conf).strip()
+    # if not conf.get("no_header_footer"):
+    output = Page(content, conf)
+    return output
+
+
+def header_footer(page):
+    headerfile = page.conf.get("header", "")
+    footerfile = page.conf.get("footer", "")
+    header = content_from_file(headerfile)
+    footer = content_from_file(footerfile)
+
+
+def generate_all(files, **kwargs):
     for inputfile in files:
-        yield generate_one(inputfile, **kwargs)
+        if inputfile.suffix in (".html", ".md"):
+            yield generate(inputfile, **kwargs)
 
 
 def write(outdir, generated):
@@ -115,4 +135,4 @@ def run():
     else:
         cfile = Path(args.out, "config.json")
     conf = get_config(cfile)
-    write(args.out, generate(content_files(args.src), **conf))
+    write(args.out, generate_all(content_filenames(args.src), **conf))
