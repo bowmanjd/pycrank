@@ -59,8 +59,12 @@ def redirect_content(self, url, title="This page"):
 
 
 def content_filenames(directory):
-    p = Path(directory)
-    files = p.glob("**/*")
+    d = Path(directory)
+    files = (
+        p
+        for p in d.glob("**/[!_]*")
+        if not any(x.startswith("_") for x in p.parent.parts)
+    )
     return files
 
 
@@ -74,32 +78,44 @@ def content_from_file(filename):
     return content
 
 
-def parse_md(page):
-    html = cmark.to_html(page.content)
-    output = Page(html, page.conf)
+def md2html(content):
+    output = cmark.to_html(content)
     return output
 
 
-def parse(page):
-    parts = page.content.split("\n}\n\n", 1)
-    body = parts[-1]
+def frontmatter(content):
+    parts = content.split("\n}\n\n", 1)
+    body = parts[-1].strip()
     try:
         frontmatter = parts[-2]
-        pageconf = json.loads(frontmatter + "}")
+        conf = json.loads(frontmatter + "}")
     except IndexError:
-        pageconf = {}
-    conf = {**page.conf, **pageconf}
-    content = body.format(**conf).strip()
+        conf = {}
+    # conf = {**page.conf, **pageconf}
+    page = Page(body, conf)
+    return page
+    # output = template(page)
     # if not conf.get("no_header_footer"):
-    output = Page(content, conf)
+
+
+def template(page):
+    output = Page(page.content.format(**page.conf), page.conf)
     return output
 
 
-def header_footer(page):
-    headerfile = page.conf.get("header", "")
-    footerfile = page.conf.get("footer", "")
-    header = content_from_file(headerfile)
-    footer = content_from_file(footerfile)
+def template_file(filename):
+    tpl_path = Path(filename)
+    content = content_from_file(tpl_path)
+    page = frontmatter(content)
+    if tpl_path.suffix == ".md":
+        page = Page(md2html(page.content), page.conf)
+    layout = page.conf.get("layout", "")
+    if layout:
+        layout_page = template_file(layout)
+        page = Page(
+            layout_page.content, {**layout.conf, **page.conf, content: page.content}
+        )
+    return template(page)
 
 
 def generate_all(files, **kwargs):
